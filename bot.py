@@ -5,15 +5,14 @@ import time
 import os
 from datetime import datetime
 
-# Get token from Railway environment variables
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 bot = telebot.TeleBot(BOT_TOKEN)
 
 
 user_prefs = {}
-AUTO_SEND_CHATS = [8148920664]  # Your chat ID
+AUTO_SEND_CHATS = [8148920664]
 
-# ===== 1. MEME FUNCTION =====
+# meme function
 
 
 def get_meme():
@@ -24,7 +23,7 @@ def get_meme():
     except Exception as e:
         return None, f"⚠️ Meme error: {str(e)}"
 
-# ===== 2. JOKE FUNCTION =====
+# joke function
 
 
 def get_joke():
@@ -41,7 +40,7 @@ def get_joke():
     except Exception as e:
         return None, f"⚠️ Joke error: {str(e)}"
 
-# ===== 3. QUOTE FUNCTION (SINGLE API) =====
+# quote function
 
 
 def get_quote():
@@ -72,29 +71,33 @@ def send_scheduled_content():
         now = datetime.now().strftime("%H:%M")
         for chat_id, prefs in user_prefs.copy().items():
             if prefs.get('scheduled_time') == now:
-                content_type = prefs.get('content_type', 'quote')
+                try:
+                    content_type = prefs.get('content_type', 'quote')
+                    content, error = None, None
 
-                if content_type == "meme":
-                    content, error = get_meme()
-                    if content:
-                        bot.send_photo(chat_id, content,
-                                       caption="⏰ Your Daily Meme!")
-                elif content_type == "joke":
-                    content, error = get_joke()
-                    if content:
-                        bot.send_message(
-                            chat_id, f"⏰ Daily Joke:\n\n{content}")
-                elif content_type == "quote":
-                    content, error = get_quote()
-                    if content:
-                        bot.send_message(
-                            chat_id, f"⏰ Daily Motivation:\n\n{content}")
+                    if content_type == "meme":
+                        content, error = get_meme()
+                        if content:
+                            bot.send_photo(chat_id, content,
+                                           caption="⏰ Your Daily Meme!")
+                    elif content_type == "joke":
+                        content, error = get_joke()
+                        if content:
+                            bot.send_message(
+                                chat_id, f"⏰ Daily Joke:\n\n{content}")
+                    elif content_type == "quote":
+                        content, error = get_quote()
+                        if content:
+                            bot.send_message(
+                                chat_id, f"⏰ Daily Motivation:\n\n{content}")
 
-                if error:
-                    bot.send_message(chat_id, error)
+                    if error:
+                        bot.send_message(
+                            chat_id, f"⚠️ Scheduled {content_type} failed: {error}")
+                except Exception as e:
+                    print(f"Scheduler error for {chat_id}: {str(e)}")
+
         time.sleep(60)
-
-# ===== 5. COMMAND HANDLERS =====
 
 
 @bot.message_handler(commands=['start', 'hello'])
@@ -124,7 +127,7 @@ def send_quote_cmd(message):
     else:
         bot.reply_to(message, error)
 
-# ===== 6. KEYWORD TRIGGERS =====
+# keyword functions
 
 
 @bot.message_handler(func=lambda msg: any(
@@ -160,7 +163,7 @@ def send_quote_trigger(message):
     else:
         bot.reply_to(message, error)
 
-# ===== 7. SCHEDULING SYSTEM =====
+# scheduling
 
 
 @bot.message_handler(commands=['schedule'])
@@ -204,7 +207,48 @@ def process_content_selection(message):
     bot.send_message(message.chat.id,
                      f"✅ Scheduled! You'll get {message.text} daily at {user_prefs[message.chat.id]['scheduled_time']}")
 
-# ===== 8. AUTO-SEND SYSTEM =====
+# ===== SMART ERROR HANDLER =====
+
+
+# Catch-all handler (MUST be last!)
+@bot.message_handler(func=lambda message: True)
+def handle_unrecognized(message):
+    # Skip if message starts with a command
+    if message.text.startswith('/'):
+        return
+
+    # Check if message contains any recognized keywords
+    recognized_keywords = [
+        # Meme triggers
+        "meme", "funny", "laugh", "make me laugh",
+        # Joke triggers
+        "joke", "tell me a joke", "crack me up",
+        # Quote triggers
+        "quote", "motivate", "inspire", "wisdom", "motivation"
+    ]
+
+    # Skip if any keyword is found (let other handlers process it)
+    if any(word in message.text.lower() for word in recognized_keywords):
+        return
+
+    # Only show help for truly unrecognized messages
+    help_text = """
+    🤖 I didn't understand that request. Try these:
+    
+    *Get Content*:
+    - "Send me a funny meme"
+    - "Tell me a joke"
+    - "I need motivation"
+    
+    *Commands*:
+    /start - Show full help
+    /schedule - Set daily content
+    """
+    bot.reply_to(message, help_text, parse_mode="Markdown")
+
+# ===== HANDLER ORDER MATTERS! =====
+# Make sure this is the LAST handler defined in your code
+# All other handlers should come BEFORE it
 
 
 def auto_send():
